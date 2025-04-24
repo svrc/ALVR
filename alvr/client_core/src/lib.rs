@@ -18,11 +18,7 @@ mod audio;
 pub mod video_decoder;
 
 use alvr_common::{
-    dbg_client_core, error,
-    glam::{UVec2, Vec2, Vec3},
-    parking_lot::{Mutex, RwLock},
-    warn, ConnectionState, DeviceMotion, LifecycleState, Pose, HAND_LEFT_ID, HAND_RIGHT_ID,
-    HEAD_ID,
+    dbg_client_core, error, glam::{Quat, UVec2, Vec2, Vec3}, parking_lot::{Mutex, RwLock}, warn, ConnectionState, DeviceMotion, Fov, LifecycleState, Pose, HAND_LEFT_ID, HAND_RIGHT_ID, HEAD_ID
 };
 use alvr_packets::{
     BatteryInfo, ButtonEntry, ClientControlPacket, FaceData, RealTimeConfig,
@@ -212,13 +208,45 @@ impl ClientCoreContext {
     pub fn send_view_params(&self, views: [ViewParams; 2]) {
         dbg_client_core!("send_view_params");
 
-        *self.connection_context.view_params.write() = views;
+        let viewpose_openxr_l = Pose {
+            orientation: Quat::IDENTITY,
+            position: views[0].pose.position
+        };
+        let viewpose_openxr_r = Pose {
+            orientation: Quat::IDENTITY,
+            position: views[1].pose.position
+        };
+        let comfort = 1.2; // TODO configurable
+        let fov_l = Fov {
+            left: views[0].fov.left * comfort,
+            right: views[0].fov.right * comfort,
+            up: views[0].fov.up * comfort,
+            down: views[0].fov.down * comfort,
+        };
+        let fov_r = Fov {
+            left: views[1].fov.left * comfort,
+            right: views[1].fov.right * comfort,
+            up: views[1].fov.up * comfort,
+            down: views[1].fov.down * comfort,
+        };
+        let views_openxr = [
+            ViewParams {
+                pose: viewpose_openxr_l,
+                fov: fov_l
+            },
+            ViewParams {
+                pose: viewpose_openxr_r,
+                fov: fov_r
+            }
+        ];
+
+        *self.connection_context.view_params.write() = views_openxr;
 
         if let Some(sender) = &mut *self.connection_context.control_sender.lock() {
             sender
                 .send(&ClientControlPacket::ViewsConfig(ViewsConfig {
-                    fov: [views[0].fov, views[1].fov],
-                    ipd_m: (views[0].pose.position - views[1].pose.position).length(),
+                    fov: [views_openxr[0].fov, views_openxr[1].fov],
+                    ipd_m: (views_openxr[0].pose.position - views_openxr[1].pose.position).length(),
                 }))
                 .ok();
         }

@@ -2,6 +2,7 @@ use super::{staging::StagingRenderer, GraphicsContext, MAX_PUSH_CONSTANTS_SIZE};
 use alvr_common::{
     glam::{self, Mat4, Quat, UVec2, Vec3, Vec4},
     Fov,
+    Pose,
 };
 use alvr_session::{FoveatedEncodingConfig, PassthroughMode, UpscalingConfig};
 use std::{collections::HashMap, ffi::c_void, iter, mem, rc::Rc};
@@ -15,6 +16,7 @@ use wgpu::{
     SamplerDescriptor, ShaderStages, StoreOp, TextureSampleType, TextureView,
     TextureViewDescriptor, TextureViewDimension, VertexState,
 };
+use super::EYE_CONVERGENCE;
 
 const FLOAT_SIZE: u32 = mem::size_of::<f32>() as u32;
 const U32_SIZE: u32 = mem::size_of::<u32>() as u32;
@@ -38,7 +40,10 @@ const _: () = assert!(
 pub struct StreamViewParams {
     pub swapchain_index: u32,
     pub reprojection_rotation: Quat,
-    pub fov: Fov,
+    pub current_headset_pose: Pose,
+    pub frame_headset_pose: Pose,
+    pub render_fov: Fov,
+    pub frame_fov: Fov,
 }
 
 #[derive(Debug)]
@@ -276,22 +281,31 @@ impl StreamRenderer {
                 ..Default::default()
             });
 
-            let fov = view_params.fov;
+            let frame_fov = view_params.frame_fov;
 
-            let tanl = f32::tan(fov.left);
-            let tanr = f32::tan(fov.right);
-            let tanu = f32::tan(fov.up);
-            let tand = f32::tan(fov.down);
+            let tanl = f32::tan(frame_fov.left);
+            let tanr = f32::tan(frame_fov.right);
+            let tanu = f32::tan(frame_fov.up);
+            let tand = f32::tan(frame_fov.down);
 
             let width = tanr - tanl;
             let height = tanu - tand;
+            let mut panel_depth = EYE_CONVERGENCE;
+            if panel_depth < 0.1 {
+                panel_depth = 0.1;
+            }
+
+            let current_headset_mat4 = Mat4::from_translation(view_params.current_headset_pose.position) * Mat4::from_quat(view_params.current_headset_pose.orientation);
+            let frame_headset_mat4 = Mat4::from_translation(view_params.frame_headset_pose.position) * Mat4::from_quat(view_params.frame_headset_pose.orientation);
 
             // The image is at z = -1.0, so we use tangents for the size
             let model_mat =
-                Mat4::from_translation(Vec3::new(width / 2.0 + tanl, height / 2.0 + tand, -1.0))
+                Mat4::from_translation(Vec3 { x: 0.0, y: 0.0, z: -panel_depth })
+                    * Mat4::from_scale(Vec3::new(panel_depth * 2.0, panel_depth * 2.0, panel_depth)) 
+                    * Mat4::from_translation(Vec3::new(width / 2.0 + tanl, height / 2.0 + tand, -1.0))
                     * Mat4::from_scale(Vec3::new(width, height, 1.));
-            let view_mat = Mat4::from_quat(view_params.reprojection_rotation).inverse();
-            let proj_mat = super::projection_from_fov(view_params.fov);
+            let view_mat = Mat4::from_quat(view_params.reprojection_rotation).inverse() * current_headset_mat4.inverse() * frame_headset_mat4;
+            let proj_mat = super::projection_from_fov(view_params.render_fov);
 
             let transform = proj_mat * view_mat * model_mat;
 
