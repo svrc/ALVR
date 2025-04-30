@@ -1,3 +1,4 @@
+use super::EYE_CONVERGENCE;
 use super::{staging::StagingRenderer, GraphicsContext, MAX_PUSH_CONSTANTS_SIZE};
 use alvr_common::{
     glam::{self, Mat4, Quat, UVec2, Vec3, Vec4},
@@ -288,7 +289,10 @@ impl StreamRenderer {
 
             let width = tanr - tanl;
             let height = tanu - tand;
-            let quad_depth = 100.0;
+            let mut quad_depth = EYE_CONVERGENCE;
+            if quad_depth < 0.1 {
+                quad_depth = 0.1;
+            }
 
             let current_headset_mat4 =
                 Mat4::from_translation(view_params.current_headset_pose.position)

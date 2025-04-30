@@ -345,6 +345,11 @@ impl StreamContext {
                 frame_result = source.get_frame();
                 thread::sleep(Duration::from_micros(500));
             }
+
+            if self.every_other % 3 != 0 {
+                //frame_result = None;
+            }
+            self.every_other += 1;
         }
 
         let (timestamp, view_params, buffer_ptr) =

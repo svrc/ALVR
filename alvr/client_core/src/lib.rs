@@ -19,9 +19,9 @@ pub mod video_decoder;
 
 use alvr_common::{
     dbg_client_core, error,
-    glam::{UVec2, Vec2, Vec3},
+    glam::{Quat, UVec2, Vec2, Vec3},
     parking_lot::{Mutex, RwLock},
-    warn, ConnectionState, DeviceMotion, LifecycleState, Pose, HAND_LEFT_ID, HAND_RIGHT_ID,
+    warn, ConnectionState, DeviceMotion, Fov, LifecycleState, Pose, HAND_LEFT_ID, HAND_RIGHT_ID,
     HEAD_ID,
 };
 use alvr_packets::{
