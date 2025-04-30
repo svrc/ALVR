@@ -619,8 +619,8 @@ impl InteractionContext {
     }
 }
 
-pub fn get_reference_space(
-    xr_session: &xr::Session<xr::OpenGlEs>,
+pub fn get_reference_space<G>(
+    xr_session: &xr::Session<G>,
     ty: xr::ReferenceSpaceType,
 ) -> xr::Space {
     xr_session

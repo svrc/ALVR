@@ -96,6 +96,7 @@ pub struct StreamContext {
     renderer: StreamRenderer,
     decoder: Option<(VideoDecoderConfig, VideoDecoderSource)>,
     defer_reprojection_to_runtime: bool,
+    every_other: i32,
     last_buffer: *mut c_void,
 }
 
@@ -234,6 +235,7 @@ impl StreamContext {
             renderer,
             decoder: None,
             defer_reprojection_to_runtime: platform.is_quest(),
+            every_other: 0,
             last_buffer: ptr::null_mut(),
         };
 

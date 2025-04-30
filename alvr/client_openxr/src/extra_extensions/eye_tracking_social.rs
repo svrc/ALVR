@@ -1,7 +1,8 @@
-use alvr_common::glam::Vec3;
+use alvr_common::glam::{Mat3, Quat, Vec3};
 use openxr::{self as xr, raw, sys};
 use std::ptr;
 
+use crate::interaction;
 use alvr_graphics::EYE_CONVERGENCE;
 use std::ffi::{CStr, CString, OsStr};
 use std::os::raw::{c_uint, c_void};
@@ -176,6 +177,7 @@ struct YVR_EyeTrackingData {
 pub struct EyeTrackerSocial {
     handle: sys::EyeTrackerFB,
     ext_fns: raw::EyeTrackingSocialFB,
+    view_reference_space: Arc<xr::Space>,
     fn_GetEyeDataET: Option<extern "C" fn(time: i64, out: *mut YVR_EyeTrackingData) -> f64>,
 }
 
@@ -246,9 +248,15 @@ impl EyeTrackerSocial {
             }
         };
 
+        let view_reference_space = Arc::new(interaction::get_reference_space(
+            &session,
+            xr::ReferenceSpaceType::VIEW,
+        ));
+
         Ok(Self {
             handle,
             ext_fns,
+            view_reference_space,
             fn_GetEyeDataET,
         })
     }
@@ -265,6 +273,8 @@ impl EyeTrackerSocial {
             time,
         };
 
+        // TODO: PFDM YVR doesn't respect the base space
+
         let mut eye_gazes = sys::EyeGazesFB::out(ptr::null_mut());
 
         let eye_gazes = unsafe {
@@ -276,6 +286,20 @@ impl EyeTrackerSocial {
 
             eye_gazes.assume_init()
         };
+
+        let mut head_pose_q = Quat::IDENTITY;
+        let mut head_pose_pos = Vec3::ZERO;
+        if let Ok((head_location, head_velocity)) =
+            self.view_reference_space.as_ref().relate(base, time)
+        {
+            if head_location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::ORIENTATION_VALID)
+            {
+                head_pose_q = crate::from_xr_pose(head_location.pose).orientation;
+                head_pose_pos = crate::from_xr_pose(head_location.pose).position;
+            }
+        }
 
         let left_valid: bool = eye_gazes.gaze[0].is_valid.into();
         let right_valid: bool = eye_gazes.gaze[1].is_valid.into();
@@ -292,6 +316,8 @@ impl EyeTrackerSocial {
             let p2 = crate::from_xr_vec3(eye_gazes.gaze[1].gaze_pose.position);
             let d2 = r_forward;
             let p_avg = (p1 + p2) / 2.0;
+
+            //alvr_common::error!("{p1} {p2}, {l_forward}");
 
             let p1_p2 = p2 - p1;
             let d1_dot_d1 = d1.dot(d1);
@@ -376,15 +402,19 @@ impl EyeTrackerSocial {
             let real_left_valid = true;
             let real_right_valid = true;
             if real_left_valid && real_right_valid {
-                let l_forward = Vec3::new(eyeLDirection_x, eyeLDirection_y, eyeLDirection_z);
+                let l_forward = Vec3::new(-eyeLDirection_x, -eyeLDirection_y, eyeLDirection_z)
+                    .normalize_or(Vec3::Z);
+                let r_forward = Vec3::new(-eyeRDirection_x, -eyeRDirection_y, eyeRDirection_z)
+                    .normalize_or(Vec3::Z);
+                let l_origin = Vec3::new(-eyeLOrigin_x, -eyeLOrigin_y, eyeLOrigin_z);
+                let r_origin = Vec3::new(-eyeROrigin_x, -eyeROrigin_y, eyeROrigin_z);
+                let lr_avg = (l_origin + r_origin) / 2.0;
 
-                let r_forward = Vec3::new(eyeRDirection_x, eyeRDirection_y, eyeRDirection_z);
-
-                let p1 = Vec3::new(eyeLOrigin_x, eyeLOrigin_y, eyeLOrigin_z);
-                let d1 = l_forward; // forward
-                let p2 = Vec3::new(eyeROrigin_x, eyeROrigin_y, eyeROrigin_z);
+                let p1 = l_origin;
+                let d1 = l_forward;
+                let p2 = r_origin;
                 let d2 = r_forward;
-                let p_avg = (p1 + p2) / 2.0;
+                let p_avg = lr_avg;
 
                 let p1_p2 = p2 - p1;
                 let d1_dot_d1 = d1.dot(d1);
@@ -426,8 +456,24 @@ impl EyeTrackerSocial {
                         EYE_CONVERGENCE = smoothed_depth;
                     }
 
-                    alvr_common::error!("Real Eyes are converged at: {depth} {smoothed_depth}");
+                    //alvr_common::error!("Real Eyes are converged at: {depth} {smoothed_depth}");
                 }
+
+                let eye_l_pose = alvr_common::Pose {
+                    orientation: head_pose_q * Quat::look_at_rh(Vec3::ZERO, l_forward, Vec3::Y),
+                    position: (head_pose_q * l_origin) + head_pose_pos,
+                };
+                let eye_r_pose = alvr_common::Pose {
+                    orientation: head_pose_q * Quat::look_at_rh(Vec3::ZERO, r_forward, Vec3::Y),
+                    position: (head_pose_q * r_origin) + head_pose_pos,
+                };
+
+                //alvr_common::error!("real {:?} {:?} {:?}, {:?} {:?}", head_pose_pos, eye_l_pose.position, eye_r_pose.position, eye_l_pose.orientation*Vec3::Z, l_forward);
+
+                return Ok([
+                    real_left_valid.then(|| crate::to_xr_pose(eye_l_pose)),
+                    real_right_valid.then(|| crate::to_xr_pose(eye_r_pose)),
+                ]);
             }
         }
 
