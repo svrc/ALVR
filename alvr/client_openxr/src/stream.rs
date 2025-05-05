@@ -9,7 +9,7 @@ use alvr_client_core::{
 use alvr_common::{
     anyhow::Result,
     error,
-    glam::{Quat, UVec2, Vec2},
+    glam::{Quat, UVec2, Vec2, Vec3},
     parking_lot::RwLock,
     Pose, RelaxedAtomic, HAND_LEFT_ID, HAND_RIGHT_ID, HEAD_ID,
 };
@@ -285,7 +285,7 @@ impl StreamContext {
                 stream_input_loop(
                     &core_ctx,
                     xr_session,
-                    &interaction_ctx,
+                    interaction_ctx,
                     &stage_reference_space,
                     &view_reference_space,
                     refresh_rate,
@@ -431,6 +431,43 @@ impl StreamContext {
             frame_headset_pose_l = view_params[0].pose;
             frame_headset_pose_r = view_params[1].pose;
         }
+        else {
+            let eye_data = interaction::get_eye_gazes(&self.xr_session, &mut self.interaction_context.write().face_sources,
+                &self.stage_reference_space,
+                vsync_time);
+
+            /*let mut head_pose_q = Quat::IDENTITY;
+            let mut head_pose_pos = Vec3::ZERO;
+            if let Ok((head_location, head_velocity)) =
+                self.view_reference_space.as_ref().relate(&self.reference_space, xr_vsync_time)
+            {
+                if head_location
+                    .location_flags
+                    .contains(xr::SpaceLocationFlags::ORIENTATION_VALID)
+                {
+                    head_pose_q = crate::from_xr_pose(head_location.pose).orientation;
+                    head_pose_pos = crate::from_xr_pose(head_location.pose).position;
+                }
+            }*/
+
+            let prev_l_z = current_headset_pose_l.position.z;
+            let prev_r_z = current_headset_pose_r.position.z;
+
+            if let Some(eye_l_pose) = eye_data[0] {
+                if let Some(eye_r_pose) = eye_data[1] {
+                    current_headset_pose_l.position = eye_r_pose.position;
+                    current_headset_pose_r.position = eye_l_pose.position;
+                }
+            }
+
+            let avg_headset_pos = current_headset_pose_l.position.midpoint(current_headset_pose_r.position);
+
+            // I'm not entirely sure why this is the case, but if this isn't done the
+            // render looks like a camera constantly autofocusing
+            let avg_frame_headset_pos = frame_headset_pose_l.position.midpoint(frame_headset_pose_r.position);
+            frame_headset_pose_l.position = frame_headset_pose_l.position - avg_frame_headset_pos + avg_headset_pos;
+            frame_headset_pose_r.position = frame_headset_pose_r.position - avg_frame_headset_pos + avg_headset_pos;
+        }
 
         unsafe {
             self.renderer.render(
@@ -528,7 +565,7 @@ impl Drop for StreamContext {
 fn stream_input_loop(
     core_ctx: &ClientCoreContext,
     xr_session: xr::Session<xr::OpenGlEs>,
-    interaction_ctx: &RwLock<InteractionContext>,
+    interaction_ctx: Arc<RwLock<InteractionContext>>,
     stage_reference_space: &xr::Space,
     view_reference_space: &xr::Space,
     refresh_rate: f32,
@@ -543,19 +580,28 @@ fn stream_input_loop(
     let mut deadline = Instant::now();
     let frame_interval = Duration::from_secs_f32(1.0 / refresh_rate);
     while running.value() {
-        let int_ctx = &*interaction_ctx.read();
+        let Some(now) = crate::xr_runtime_now(xr_session.instance()).map(crate::from_xr_time)
+        else {
+            error!("Cannot poll tracking: invalid time");
+            return;
+        };
+
+        // All writes must happen *before* the read locks the interaction context,
+        // and this thread *must* only call read() once, or it will deadlock.
+        let eye_gazes = interaction::get_eye_gazes(
+            &xr_session,
+            &mut interaction_ctx.write().face_sources,
+            stage_reference_space,
+            now,
+        );
+
+        let int_ctx = interaction_ctx.read();
         // Streaming related inputs are updated here. Make sure every input poll is done in this
         // thread
         if let Err(e) = xr_session.sync_actions(&[(&int_ctx.action_set).into()]) {
             error!("{e}");
             return;
         }
-
-        let Some(now) = crate::xr_runtime_now(xr_session.instance()).map(crate::from_xr_time)
-        else {
-            error!("Cannot poll tracking: invalid time");
-            return;
-        };
 
         let target_time = now + core_ctx.get_total_prediction_offset();
 
@@ -615,18 +661,14 @@ fn stream_input_loop(
         }
 
         let face_data = FaceData {
-            eye_gazes: interaction::get_eye_gazes(
-                &xr_session,
-                &int_ctx.face_sources,
-                stage_reference_space,
-                now,
-            ),
+            eye_gazes: eye_gazes,
             fb_face_expression: interaction::get_fb_face_expression(&int_ctx.face_sources, now).or(
                 interaction::get_pico_face_expression(&int_ctx.face_sources, now),
             ),
             htc_eye_expression: interaction::get_htc_eye_expression(&int_ctx.face_sources, now),
             htc_lip_expression: interaction::get_htc_lip_expression(&int_ctx.face_sources, now),
         };
+        
 
         if let Some((tracker, joint_count)) = &int_ctx.body_sources.body_tracker_fb {
             device_motions.append(&mut interaction::get_fb_body_tracking_points(

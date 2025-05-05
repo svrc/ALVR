@@ -822,6 +822,7 @@ pub unsafe extern "C" fn alvr_render_lobby_opengl(
     view_inputs: *const AlvrLobbyViewParams,
     render_background: bool,
 ) {
+    let headset_pose = from_capi_pose((*view_inputs).pose);
     let view_inputs = [
         LobbyViewParams {
             swapchain_index: (*view_inputs).swapchain_index,
@@ -839,7 +840,9 @@ pub unsafe extern "C" fn alvr_render_lobby_opengl(
         if let Some(renderer) = renderer {
             renderer.render(
                 view_inputs,
+                headset_pose,
                 [(None, None), (None, None)],
+                [None, None],
                 None,
                 None,
                 None,

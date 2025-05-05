@@ -1,12 +1,15 @@
+use crate::EYE_CONVERGENCE;
+
 use super::{GraphicsContext, MAX_PUSH_CONSTANTS_SIZE, SDR_FORMAT};
 use alvr_common::{
-    glam::{IVec2, Mat4, Quat, UVec2, Vec3},
+    glam::{IVec2, Mat3, Mat4, Quat, UVec2, Vec3},
     DeviceMotion, Fov, Pose,
 };
 use glyph_brush_layout::{
     ab_glyph::{Font, FontRef, ScaleFont},
     FontId, GlyphPositioner, HorizontalAlign, Layout, SectionGeometry, SectionText, VerticalAlign,
 };
+use core::f32;
 use std::{f32::consts::FRAC_PI_2, mem, rc::Rc};
 use wgpu::{
     include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
@@ -409,7 +412,9 @@ impl LobbyRenderer {
     pub fn render(
         &self,
         view_params: [LobbyViewParams; 2],
+        head_pose: Pose,
         hand_data: [(Option<DeviceMotion>, Option<[Pose; 26]>); 2],
+        eye_data: [Option<Pose>; 2],
         additional_motions: Option<Vec<DeviceMotion>>,
         body_skeleton: Option<Vec<Option<Pose>>>,
         body_tracking_type: Option<BodyTrackingType>,
@@ -424,11 +429,22 @@ impl LobbyRenderer {
             });
 
         for (view_idx, view_input) in view_params.iter().enumerate() {
-            let view = Mat4::from_rotation_translation(
+            let mut view = Mat4::from_rotation_translation(
                 view_input.pose.orientation,
                 view_input.pose.position,
             )
             .inverse();
+            if let Some(eye_l_pose) = eye_data[0] {
+                if let Some(eye_r_pose) = eye_data[1] {
+                    let eye_world = if view_idx == 1 { eye_l_pose.position } else { eye_r_pose.position };
+                    
+                    view = Mat4::from_rotation_translation(
+                        view_input.pose.orientation,
+                        eye_world,
+                    )
+                    .inverse();
+                }
+            }
             let view_proj = super::projection_from_fov(view_input.fov) * view;
 
             let clear_color = if render_background {
@@ -508,14 +524,17 @@ impl LobbyRenderer {
 
             fn draw_crosshair(
                 pass: &mut RenderPass,
-                motion: &DeviceMotion,
+                pose: &Pose,
+                linear_velocity: Vec3,
+                angular_velocity: Vec3,
                 view_proj: Mat4,
                 show_velocities: bool,
+                color: &[u8]
             ) {
                 let hand_transform = Mat4::from_scale_rotation_translation(
                     Vec3::ONE * 0.2,
-                    motion.pose.orientation,
-                    motion.pose.position,
+                    pose.orientation,
+                    pose.position,
                 );
 
                 // Draw crosshair
@@ -527,7 +546,7 @@ impl LobbyRenderer {
                 pass.set_push_constants(
                     ShaderStages::VERTEX_FRAGMENT,
                     COLOR_CONST_OFFSET,
-                    &[255, 255, 255, 255],
+                    color,
                 );
                 for rot in &segment_rotations {
                     let transform = hand_transform
@@ -540,9 +559,9 @@ impl LobbyRenderer {
                 if show_velocities {
                     // Draw linear velocity
                     let transform = Mat4::from_scale_rotation_translation(
-                        Vec3::ONE * motion.linear_velocity.length() * 0.2,
-                        Quat::from_rotation_arc(-Vec3::Z, motion.linear_velocity.normalize()),
-                        motion.pose.position,
+                        Vec3::ONE * linear_velocity.length() * 0.2,
+                        Quat::from_rotation_arc(-Vec3::Z, linear_velocity.normalize()),
+                        pose.position,
                     );
                     pass.set_push_constants(
                         ShaderStages::VERTEX_FRAGMENT,
@@ -553,9 +572,9 @@ impl LobbyRenderer {
 
                     // Draw angular velocity
                     let transform = Mat4::from_scale_rotation_translation(
-                        Vec3::ONE * motion.angular_velocity.length() * 0.01,
-                        Quat::from_rotation_arc(-Vec3::Z, motion.angular_velocity.normalize()),
-                        motion.pose.position,
+                        Vec3::ONE * angular_velocity.length() * 0.01,
+                        Quat::from_rotation_arc(-Vec3::Z, angular_velocity.normalize()),
+                        pose.position,
                     );
                     pass.set_push_constants(
                         ShaderStages::VERTEX_FRAGMENT,
@@ -590,14 +609,76 @@ impl LobbyRenderer {
                 }
 
                 if let Some(motion) = maybe_motion {
-                    draw_crosshair(&mut pass, motion, view_proj, show_velocities);
+                    draw_crosshair(&mut pass, &motion.pose, motion.linear_velocity, motion.angular_velocity, view_proj, show_velocities, &[255, 255, 255, 255]);
                 }
             }
 
             if let Some(motions) = &additional_motions {
                 for motion in motions {
-                    draw_crosshair(&mut pass, motion, view_proj, show_velocities);
+                    draw_crosshair(&mut pass, &motion.pose, motion.linear_velocity, motion.angular_velocity, view_proj, show_velocities, &[255, 255, 255, 255]);
                 }
+            }
+
+            let mut eye_dist_l = 1.0;
+            let mut eye_dist_r = 1.0;
+            if let Some(eye_l) = eye_data[0] {
+                if let Some(eye_r) = eye_data[1] {
+                    if let Some((convergence_pt, dist, dist_l, dist_r)) = eye_l.convergence_point(&eye_r) {
+                        eye_dist_l = dist_l;
+                        eye_dist_r = dist_r;
+                        let convergence_pose = Pose {
+                            orientation: eye_l.orientation,
+                            position: convergence_pt,
+                        };
+                        draw_crosshair(&mut pass, &convergence_pose, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[255, 255, 255, 255]);
+
+                        let comb_forward = ((eye_l.orientation * Vec3::NEG_Z) + (eye_r.orientation * Vec3::NEG_Z)) * 0.5;
+                        let comb_pos = (eye_l.position + eye_r.position) * 0.5;
+                        let convergence_pose_2 = Pose {
+                            orientation: eye_l.orientation,
+                            position: comb_pos + (comb_forward * unsafe { crate::EYE_CONVERGENCE }) ,
+                        };
+                        draw_crosshair(&mut pass, &convergence_pose_2, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[255, 255, 0, 255]);
+                    
+                    
+                        for (maybe_motion, maybe_skeleton) in &hand_data {
+                            if let Some(motion) = maybe_motion {
+                                let avg_eye = (eye_l.position + eye_r.position) * 0.5;
+                                let motion_dist = convergence_pt.distance(motion.pose.position);
+                                //alvr_common::error!("motion dist {:?}, mult {:?}", motion_dist, dist/motion_dist);
+                            }
+                        }
+
+                        
+                    }
+                }
+            }
+
+            if let Some(eye_pose) = eye_data[0] {
+                let forward_pose = Pose {
+                    orientation: eye_pose.orientation,
+                    position: eye_pose.position + (view_params[0].pose.orientation * Vec3::NEG_Z) + (view_params[0].pose.orientation * Vec3::NEG_Y * 0.3)// + (eye_pose.orientation * Vec3::NEG_Z * eye_dist_l),
+                };
+                draw_crosshair(&mut pass, &forward_pose, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[255, 0, 0, 255]);
+
+                let forward_pose_2 = Pose {
+                    orientation: eye_pose.orientation,
+                    position: eye_pose.position + (view_params[0].pose.orientation * Vec3::NEG_Z) + (view_params[0].pose.orientation * Vec3::NEG_Y * 0.3) + (eye_pose.orientation * Vec3::NEG_Z * 0.3),
+                };
+                draw_crosshair(&mut pass, &forward_pose_2, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[255, 0, 0, 255]);
+            }
+            if let Some(eye_pose) = eye_data[1] {
+                let forward_pose = Pose {
+                    orientation: eye_pose.orientation,
+                    position: eye_pose.position + (view_params[1].pose.orientation * Vec3::NEG_Z) + (view_params[1].pose.orientation * Vec3::NEG_Y * 0.3)//(eye_pose.orientation * Vec3::NEG_Z * eye_dist_r),
+                };
+                draw_crosshair(&mut pass, &forward_pose, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[0, 255, 0, 255]);
+
+                let forward_pose_2 = Pose {
+                    orientation: eye_pose.orientation,
+                    position: eye_pose.position + (view_params[1].pose.orientation * Vec3::NEG_Z) + (view_params[1].pose.orientation * Vec3::NEG_Y * 0.3) + (eye_pose.orientation * Vec3::NEG_Z * 0.3),
+                };
+                draw_crosshair(&mut pass, &forward_pose_2, Vec3::ZERO, Vec3::ZERO, view_proj, false, &[0, 255, 0, 255]);
             }
 
             let body_skeleton_bones = match body_tracking_type {

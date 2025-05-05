@@ -531,7 +531,7 @@ impl InteractionContext {
 
         self.face_sources.eye_tracker_fb = create_ext_object(
             "EyeTrackerSocial",
-            config.face_tracking.as_ref().map(|s| s.eye_tracking_fb),
+            /*config.face_tracking.as_ref().map(|s| s.eye_tracking_fb)*/ Some(true),
             || EyeTrackerSocial::new(&self.xr_session),
         );
 
@@ -896,14 +896,14 @@ pub fn update_buttons(
 
 pub fn get_eye_gazes(
     xr_session: &xr::Session<xr::OpenGlEs>,
-    sources: &FaceSources,
+    sources: &mut FaceSources,
     reference_space: &xr::Space,
     time: Duration,
 ) -> [Option<Pose>; 2] {
     let xr_time = crate::to_xr_time(time);
 
     'fb_eyes: {
-        let Some(tracker) = &sources.eye_tracker_fb else {
+        let Some(tracker) = sources.eye_tracker_fb.as_mut() else {
             break 'fb_eyes;
         };
 

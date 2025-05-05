@@ -290,8 +290,8 @@ impl StreamRenderer {
             let width = tanr - tanl;
             let height = tanu - tand;
             let mut quad_depth = EYE_CONVERGENCE;
-            if quad_depth < 0.1 {
-                quad_depth = 0.1;
+            if quad_depth < 0.015 {
+                quad_depth = 0.015;
             }
 
             let current_headset_mat4 =

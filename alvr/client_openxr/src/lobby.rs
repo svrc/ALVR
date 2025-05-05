@@ -3,7 +3,7 @@ use crate::{
     graphics::{self, ProjectionLayerAlphaConfig, ProjectionLayerBuilder},
     interaction::{self, InteractionContext},
 };
-use alvr_common::{glam::UVec2, parking_lot::RwLock, Pose};
+use alvr_common::{glam::UVec2, glam::Quat, glam::Vec3, parking_lot::RwLock, Pose};
 use alvr_graphics::{
     BodyTrackingType, GraphicsContext, LobbyRenderer, LobbyViewParams, SDR_FORMAT_GL,
 };
@@ -17,6 +17,7 @@ pub struct Lobby {
     interaction_ctx: Arc<RwLock<InteractionContext>>,
     platform: Platform,
     reference_space: xr::Space,
+    view_reference_space: Arc<xr::Space>,
     swapchains: [xr::Swapchain<xr::OpenGlEs>; 2],
     view_resolution: UVec2,
     reference_space_type: xr::ReferenceSpaceType,
@@ -41,6 +42,11 @@ impl Lobby {
         };
 
         let reference_space = interaction::get_reference_space(&xr_session, reference_space_type);
+
+        let view_reference_space = Arc::new(interaction::get_reference_space(
+            &xr_session,
+            xr::ReferenceSpaceType::VIEW,
+        ));
 
         let swapchains = [
             graphics::create_swapchain(&xr_session, &gfx_ctx, view_resolution, SDR_FORMAT_GL, None),
@@ -72,6 +78,7 @@ impl Lobby {
             interaction_ctx,
             platform,
             reference_space,
+            view_reference_space,
             swapchains,
             view_resolution,
             reference_space_type,
@@ -90,6 +97,20 @@ impl Lobby {
 
     pub fn render(&mut self, vsync_time: Duration) -> ProjectionLayerBuilder {
         let xr_vsync_time = xr::Time::from_nanos(vsync_time.as_nanos() as _);
+
+        let mut head_pose_q = Quat::IDENTITY;
+        let mut head_pose_pos = Vec3::ZERO;
+        if let Ok((head_location, head_velocity)) =
+            self.view_reference_space.as_ref().relate(&self.reference_space, xr_vsync_time)
+        {
+            if head_location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::ORIENTATION_VALID)
+            {
+                head_pose_q = crate::from_xr_pose(head_location.pose).orientation;
+                head_pose_pos = crate::from_xr_pose(head_location.pose).position;
+            }
+        }
 
         let (flags, maybe_views) = self
             .xr_session
@@ -132,6 +153,10 @@ impl Lobby {
             &mut Pose::default(),
             &mut Pose::default(),
         );
+        
+        let eye_data = interaction::get_eye_gazes(&self.xr_session, &mut self.interaction_ctx.write().face_sources,
+            &self.reference_space,
+            vsync_time);
 
         let additional_motions = self
             .interaction_ctx
@@ -202,7 +227,9 @@ impl Lobby {
                     swapchain_index: right_swapchain_idx,
                 },
             ],
+            Pose { orientation: head_pose_q, position: head_pose_pos },
             [left_hand_data, right_hand_data],
+            eye_data,
             additional_motions,
             body_skeleton,
             body_tracking_type,

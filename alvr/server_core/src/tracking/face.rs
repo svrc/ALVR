@@ -100,11 +100,13 @@ impl FaceTrackingSink {
                 let left_eye_blink = fb_face_expression
                     .map(|v| v[12])
                     .or_else(|| face_data.htc_eye_expression.as_ref().map(|v| v[0]))
-                    .or_else(|| pico_face_expression.map(|v| v[28]));
+                    .or_else(|| pico_face_expression.map(|v| v[28]))
+                    .or_else(|| if face_data.eye_gazes[0].is_some() { Some(0.0) } else { Some(1.0) });
                 let right_eye_blink = fb_face_expression
                     .map(|v| v[13])
                     .or_else(|| face_data.htc_eye_expression.as_ref().map(|v| v[2]))
-                    .or_else(|| pico_face_expression.map(|v| v[38]));
+                    .or_else(|| pico_face_expression.map(|v| v[38]))
+                    .or_else(|| if face_data.eye_gazes[1].is_some() { Some(0.0) } else { Some(1.0) });
 
                 if let (Some(left), Some(right)) = (left_eye_blink, right_eye_blink) {
                     self.send_osc_message(
