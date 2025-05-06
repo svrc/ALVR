@@ -232,7 +232,7 @@ impl StreamContext {
             target_view_resolution,
             renderer,
             decoder: None,
-            defer_reprojection_to_runtime: platform.is_quest(),
+            defer_reprojection_to_runtime: !platform.is_yvr(),
             every_other: 0,
         };
 
