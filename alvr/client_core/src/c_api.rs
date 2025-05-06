@@ -868,7 +868,6 @@ pub unsafe extern "C" fn alvr_render_stream_opengl(
                 [
                     StreamViewParams {
                         swapchain_index: left_params.swapchain_index,
-                        reprojection_rotation: from_capi_quat(left_params.reprojection_rotation),
                         input_view_params: ViewParams {
                             pose: Pose {
                                 orientation: Quat::IDENTITY,
@@ -878,7 +877,7 @@ pub unsafe extern "C" fn alvr_render_stream_opengl(
                         },
                         output_view_params: ViewParams {
                             pose: Pose {
-                                orientation: Quat::IDENTITY,
+                                orientation: from_capi_quat(left_params.reprojection_rotation),
                                 position: Vec3::ZERO,
                             },
                             fov: from_capi_fov(left_params.fov),
@@ -886,7 +885,6 @@ pub unsafe extern "C" fn alvr_render_stream_opengl(
                     },
                     StreamViewParams {
                         swapchain_index: right_params.swapchain_index,
-                        reprojection_rotation: from_capi_quat(right_params.reprojection_rotation),
                         input_view_params: ViewParams {
                             pose: Pose {
                                 orientation: Quat::IDENTITY,
@@ -896,7 +894,7 @@ pub unsafe extern "C" fn alvr_render_stream_opengl(
                         },
                         output_view_params: ViewParams {
                             pose: Pose {
-                                orientation: Quat::IDENTITY,
+                                orientation: from_capi_quat(right_params.reprojection_rotation),
                                 position: Vec3::ZERO,
                             },
                             fov: from_capi_fov(right_params.fov),
