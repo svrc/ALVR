@@ -22,7 +22,6 @@ use alvr_session::{
     MediacodecProperty, PassthroughMode, UpscalingConfig,
 };
 use alvr_system_info::Platform;
-use core::ffi::c_void;
 use openxr as xr;
 use std::{
     ptr,
@@ -97,7 +96,6 @@ pub struct StreamContext {
     decoder: Option<(VideoDecoderConfig, VideoDecoderSource)>,
     defer_reprojection_to_runtime: bool,
     every_other: i32,
-    last_buffer: *mut c_void,
 }
 
 impl StreamContext {
@@ -236,7 +234,6 @@ impl StreamContext {
             decoder: None,
             defer_reprojection_to_runtime: platform.is_quest(),
             every_other: 0,
-            last_buffer: ptr::null_mut(),
         };
 
         this.update_reference_space();
@@ -358,21 +355,11 @@ impl StreamContext {
             if let Some((timestamp, buffer_ptr)) = frame_result {
                 let view_params = self.core_context.report_compositor_start(timestamp);
 
-                // Avoid passing invalid timestamp to runtime
-                let timestamp =
-                    Duration::max(timestamp, vsync_time.saturating_sub(Duration::from_secs(1)));
-
                 self.last_good_view_params = view_params;
-
-                // If we are handling reprojection ourselves, we want the last buffer so we can
-                // re-render it at headset Hz ourselves instead of the compositor doing it.
-                if !self.defer_reprojection_to_runtime {
-                    self.last_buffer = buffer_ptr;
-                }
 
                 (timestamp, view_params, buffer_ptr)
             } else {
-                (vsync_time, self.last_good_view_params, self.last_buffer)
+                (vsync_time, self.last_good_view_params, ptr::null_mut())
             };
 
         let left_swapchain_idx = self.swapchains[0].acquire_image().unwrap();
@@ -402,7 +389,7 @@ impl StreamContext {
 
         // The poses and FoVs we received from the PC runtime, which may differ and/or include
         // altered FoVs based on settings and view conversions done for canting.
-        let input_view_params = view_params;
+        let mut input_view_params = view_params;
         let mut output_view_params = [
             ViewParams {
                 pose: crate::from_xr_pose(current_headset_views[0].pose),
@@ -413,12 +400,18 @@ impl StreamContext {
                 fov: crate::from_xr_fov(current_headset_views[1].fov),
             },
         ];
+        let mut openxr_display_time = vsync_time;
 
         // (shinyquagsire23) I don't entirely trust runtimes to implement CompositionLayerProjectionView
         // correctly, but if we do trust them, avoid doing rotation ourselves.
         // Ex: YVR/PFDMR has issues with aspect ratio mismatches and passthrough compositing.
         if self.defer_reprojection_to_runtime {
             output_view_params = input_view_params;
+
+            // Avoid passing invalid timestamp to runtime
+            // TODO(shinyquagsire23): Is there a technical reason to do it this way? Why not just vsync?
+            openxr_display_time =
+                Duration::max(timestamp, vsync_time.saturating_sub(Duration::from_secs(1)))
         }
         else {
             let eye_data = interaction::get_eye_gazes(&self.xr_session, &mut self.interaction_context.write().face_sources,
@@ -439,23 +432,24 @@ impl StreamContext {
                 }
             }*/
 
-            let prev_l_z = current_headset_pose_l.position.z;
-            let prev_r_z = current_headset_pose_r.position.z;
+            let prev_l_z = output_view_params[0].pose.position.z;
+            let prev_r_z = output_view_params[1].pose.position.z;
 
+            // TODO why is this flipped
             if let Some(eye_l_pose) = eye_data[0] {
                 if let Some(eye_r_pose) = eye_data[1] {
-                    current_headset_pose_l.position = eye_r_pose.position;
-                    current_headset_pose_r.position = eye_l_pose.position;
+                    output_view_params[0].pose.position = eye_r_pose.position;
+                    output_view_params[1].pose.position = eye_l_pose.position;
                 }
             }
 
-            let avg_headset_pos = current_headset_pose_l.position.midpoint(current_headset_pose_r.position);
+            let avg_headset_pos = output_view_params[0].pose.position.midpoint(output_view_params[1].pose.position);
 
             // I'm not entirely sure why this is the case, but if this isn't done the
             // render looks like a camera constantly autofocusing
-            let avg_frame_headset_pos = frame_headset_pose_l.position.midpoint(frame_headset_pose_r.position);
-            frame_headset_pose_l.position = frame_headset_pose_l.position - avg_frame_headset_pos + avg_headset_pos;
-            frame_headset_pose_r.position = frame_headset_pose_r.position - avg_frame_headset_pos + avg_headset_pos;
+            let avg_frame_headset_pos = input_view_params[0].pose.position.midpoint(input_view_params[1].pose.position);
+            input_view_params[0].pose.position = input_view_params[0].pose.position - avg_frame_headset_pos + avg_headset_pos;
+            input_view_params[1].pose.position = input_view_params[1].pose.position - avg_frame_headset_pos + avg_headset_pos;
         }
 
         unsafe {
@@ -536,7 +530,7 @@ impl StreamContext {
                 }),
         );
 
-        (layer, timestamp)
+        (layer, openxr_display_time)
     }
 }
 
