@@ -37,7 +37,7 @@ void VideoEncoderNVENC::Initialize() {
 
     try {
         m_NvNecoder = std::make_shared<NvEncoderD3D11>(
-            m_pD3DRender->GetDevice(), m_renderWidth, m_renderHeight, format, 0
+            m_pD3DRender->GetDevice(), m_renderWidth, m_renderHeight, format, 3
         );
     } catch (NVENCException e) {
         throw MakeException(
@@ -115,7 +115,8 @@ void VideoEncoderNVENC::Transmit(
 
     std::vector<std::vector<uint8_t>> vPacket;
 
-    const NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
+    NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
+    encoderInputFrame->timestamp = targetTimestampNs;
 
     ID3D11Texture2D* pInputTexture
         = reinterpret_cast<ID3D11Texture2D*>(encoderInputFrame->inputPtr);
@@ -126,9 +127,13 @@ void VideoEncoderNVENC::Transmit(
         Debug("Inserting IDR frame.\n");
         picParams.encodePicFlags = NV_ENC_PIC_FLAG_FORCEIDR;
     }
-    m_NvNecoder->EncodeFrame(vPacket, &picParams);
+    std::vector<uint64_t> vTimestamp;
 
+    m_NvNecoder->EncodeFrame(vPacket, vTimestamp, &picParams);
+
+    size_t idx = 0;
     for (std::vector<uint8_t>& packet : vPacket) {
+        uint64_t timestamp = vTimestamp[idx++];
         uint8_t* buf = packet.data();
         int len = (int)packet.size();
 
@@ -155,7 +160,7 @@ void VideoEncoderNVENC::Transmit(
             fpOut.write(reinterpret_cast<char*>(buf), len);
         }
 
-        ParseFrameNals(m_codec, buf, len, targetTimestampNs, insertIDR);
+        ParseFrameNals(m_codec, buf, len, timestamp, insertIDR);
     }
 }
 

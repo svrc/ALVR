@@ -440,7 +440,7 @@ void NvEncoder::DestroyHWEncoder()
     m_bEncoderInitialized = false;
 }
 
-const NvEncInputFrame* NvEncoder::GetNextInputFrame()
+NvEncInputFrame* NvEncoder::GetNextInputFrame()
 {
     int i = m_iToSend % m_nEncoderBuffer;
     return &m_vInputFrames[i];
@@ -468,7 +468,7 @@ void NvEncoder::MapResources(uint32_t bfrIdx)
     }
 }
 
-void NvEncoder::EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, NV_ENC_PIC_PARAMS *pPicParams)
+void NvEncoder::EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, NV_ENC_PIC_PARAMS *pPicParams)
 {
     vPacket.clear();
     if (!IsHWEncoderInitialized())
@@ -485,7 +485,7 @@ void NvEncoder::EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, NV_ENC_P
     if (nvStatus == NV_ENC_SUCCESS || nvStatus == NV_ENC_ERR_NEED_MORE_INPUT)
     {
         m_iToSend++;
-        GetEncodedPacket(m_vBitstreamOutputBuffer, vPacket, true);
+        GetEncodedPacket(m_vBitstreamOutputBuffer, vPacket, vTimestamp, false);
     }
     else
     {
@@ -495,6 +495,7 @@ void NvEncoder::EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, NV_ENC_P
 
 void NvEncoder::RunMotionEstimation(std::vector<uint8_t> &mvData)
 {
+    std::vector<uint64_t> vTimestamp;
     if (!m_hEncoder)
     {
         NVENC_THROW_ERROR("Encoder Initialization failed", NV_ENC_ERR_NO_ENCODE_DEVICE);
@@ -511,7 +512,7 @@ void NvEncoder::RunMotionEstimation(std::vector<uint8_t> &mvData)
     {
         m_iToSend++;
         std::vector<std::vector<uint8_t>> vPacket;
-        GetEncodedPacket(m_vMVDataOutputBuffer, vPacket, true);
+        GetEncodedPacket(m_vMVDataOutputBuffer, vPacket, vTimestamp, true);
         if (vPacket.size() != 1)
         {
             NVENC_THROW_ERROR("GetEncodedPacket() doesn't return one (and only one) MVData", NV_ENC_ERR_GENERIC);
@@ -570,6 +571,7 @@ void NvEncoder::SendEOS()
 
 void NvEncoder::EndEncode(std::vector<std::vector<uint8_t>> &vPacket)
 {
+    std::vector<uint64_t> junk;
     vPacket.clear();
     if (!IsHWEncoderInitialized())
     {
@@ -578,16 +580,21 @@ void NvEncoder::EndEncode(std::vector<std::vector<uint8_t>> &vPacket)
 
     SendEOS();
 
-    GetEncodedPacket(m_vBitstreamOutputBuffer, vPacket, false);
+    GetEncodedPacket(m_vBitstreamOutputBuffer, vPacket, junk, false);
 }
 
-void NvEncoder::GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, bool bOutputDelay)
+void NvEncoder::GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, bool bOutputDelay)
 {
     unsigned i = 0;
     int iEnd = bOutputDelay ? m_iToSend - m_nOutputDelay : m_iToSend;
-    for (; m_iGot < iEnd; m_iGot++)
+    for (; m_iGot < iEnd; m_iGot)
     {
-        WaitForCompletionEvent(m_iGot % m_nEncoderBuffer);
+        if (!WaitForCompletionEvent(m_iGot % m_nEncoderBuffer)) {
+            return;
+        }
+        /*if (!CheckCompleted(m_iGot % m_nEncoderBuffer)) {
+            return;
+        }*/
         NV_ENC_LOCK_BITSTREAM lockBitstreamData = { NV_ENC_LOCK_BITSTREAM_VER };
         lockBitstreamData.outputBitstream = vOutputBuffer[m_iGot % m_nEncoderBuffer];
         lockBitstreamData.doNotWait = false;
@@ -627,6 +634,10 @@ void NvEncoder::GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, 
             NVENC_API_CALL(m_nvenc.nvEncUnmapInputResource(m_hEncoder, m_vMappedRefBuffers[m_iGot % m_nEncoderBuffer]));
             m_vMappedRefBuffers[m_iGot % m_nEncoderBuffer] = nullptr;
         }
+
+        vTimestamp.push_back(m_vInputFrames[m_iGot % m_nEncoderBuffer].timestamp);
+        m_iGot++;
+        //break;
     }
 }
 
@@ -767,7 +778,7 @@ void NvEncoder::UnregisterInputResources()
 }
 
 
-void NvEncoder::WaitForCompletionEvent(int iEvent)
+bool NvEncoder::WaitForCompletionEvent(int iEvent)
 {
 #if defined(_WIN32)
     // Check if we are in async mode. If not, don't wait for event;
@@ -778,17 +789,41 @@ void NvEncoder::WaitForCompletionEvent(int iEvent)
 
     if (0U == sInitializeParams.enableEncodeAsync)
     {
-        return;
+        return true;
     }
-#ifdef DEBUG
-    WaitForSingleObject(m_vpCompletionEvent[iEvent], INFINITE);
-#else
-    // wait for 20s which is infinite on terms of gpu time
-    if (WaitForSingleObject(m_vpCompletionEvent[iEvent], 20000) == WAIT_FAILED)
+
+    // wait for 3ms
+    DWORD result = WaitForSingleObject(m_vpCompletionEvent[iEvent], 3);
+    if (result == WAIT_FAILED)
     {
         NVENC_THROW_ERROR("Failed to encode frame", NV_ENC_ERR_GENERIC);
     }
+    return result != WAIT_TIMEOUT;
 #endif
+}
+
+bool NvEncoder::CheckCompleted(int iEvent)
+{
+#if defined(_WIN32)
+    // Check if we are in async mode. If not, don't wait for event;
+    NV_ENC_CONFIG sEncodeConfig = { 0 };
+    NV_ENC_INITIALIZE_PARAMS sInitializeParams = { 0 };
+    sInitializeParams.encodeConfig = &sEncodeConfig;
+    GetInitializeParams(&sInitializeParams);
+
+    if (0U == sInitializeParams.enableEncodeAsync)
+    {
+        return true;
+    }
+
+    // wait for 20s which is infinite on terms of gpu time
+    DWORD result = WaitForSingleObject(m_vpCompletionEvent[iEvent], 0);
+    if (result == WAIT_FAILED)
+    {
+        NVENC_THROW_ERROR("Failed to encode frame", NV_ENC_ERR_GENERIC);
+    }
+
+    return result != WAIT_TIMEOUT;
 #endif
 }
 

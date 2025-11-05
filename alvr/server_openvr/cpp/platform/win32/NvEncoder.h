@@ -78,6 +78,7 @@ struct NvEncInputFrame
     uint32_t chromaPitch;
     NV_ENC_BUFFER_FORMAT bufferFormat;
     NV_ENC_INPUT_RESOURCE_TYPE resourceType;
+    uint64_t timestamp;
 };
 
 /**
@@ -115,7 +116,7 @@ public:
     *  input buffer. The application must copy the uncompressed data to the
     *  input buffer and then call EncodeFrame() function to encode it.
     */
-    const NvEncInputFrame* GetNextInputFrame();
+    NvEncInputFrame* GetNextInputFrame();
 
 
     /**
@@ -124,7 +125,7 @@ public:
     *  data, which has been copied to an input buffer obtained from the
     *  GetNextInputFrame() function.
     */
-    virtual void EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, NV_ENC_PIC_PARAMS *pPicParams = nullptr);
+    virtual void EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, NV_ENC_PIC_PARAMS *pPicParams = nullptr);
 
     /**
     *  @brief  This function to flush the encoder queue.
@@ -332,7 +333,12 @@ protected:
     /**
     *  @brief This function is used to wait for completion of encode command.
     */
-    void WaitForCompletionEvent(int iEvent);
+    bool WaitForCompletionEvent(int iEvent);
+
+    /**
+    *  @brief This function is used to check for completion of encode command.
+    */
+    bool CheckCompleted(int iEvent);
 
     /**
     *  @brief This function is used to send EOS to HW encoder.
@@ -359,7 +365,7 @@ private:
     *  This is called by DoEncode() function. If there is buffering enabled,
     *  this may return without any output data.
     */
-    void GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, bool bOutputDelay);
+    void GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, bool bOutputDelay);
 
     /**
     *  @brief This is a private function which is used to initialize the bitstream buffers.
