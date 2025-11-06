@@ -79,6 +79,7 @@ struct NvEncInputFrame
     NV_ENC_BUFFER_FORMAT bufferFormat;
     NV_ENC_INPUT_RESOURCE_TYPE resourceType;
     uint64_t timestamp;
+    bool isIDR;
 };
 
 /**
@@ -125,7 +126,12 @@ public:
     *  data, which has been copied to an input buffer obtained from the
     *  GetNextInputFrame() function.
     */
-    virtual void EncodeFrame(std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, NV_ENC_PIC_PARAMS *pPicParams = nullptr);
+    virtual void EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams = nullptr);
+
+    /**
+    *  @brief  This function is used to retrieve encoded frame bitstreams submitted to EncodeFrame
+    */
+    virtual void GetEncodedFrames(std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, std::vector<bool> &vIsIDR);
 
     /**
     *  @brief  This function to flush the encoder queue.
@@ -365,7 +371,7 @@ private:
     *  This is called by DoEncode() function. If there is buffering enabled,
     *  this may return without any output data.
     */
-    void GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, bool bOutputDelay);
+    void GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, std::vector<std::vector<uint8_t>> &vPacket, std::vector<uint64_t> &vTimestamp, std::vector<bool> &vIsIDR, bool bOutputDelay);
 
     /**
     *  @brief This is a private function which is used to initialize the bitstream buffers.

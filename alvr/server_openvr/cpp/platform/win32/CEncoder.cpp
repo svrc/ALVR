@@ -112,12 +112,17 @@ void CEncoder::Run() {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_MOST_URGENT);
 
     while (!m_bExiting) {
-        m_newFrameReady.Wait();
+        do {
+            m_videoEncoder->TransmitAvailable();
+            if (m_bExiting)
+                break;
+        } while (!m_newFrameReady.Wait(1));
+
         if (m_bExiting)
             break;
 
         if (m_FrameRender->GetTexture()) {
-            m_videoEncoder->Transmit(
+            m_videoEncoder->QueueForEncoding(
                 m_FrameRender->GetTexture().Get(),
                 m_presentationTime,
                 m_targetTimestampNs,

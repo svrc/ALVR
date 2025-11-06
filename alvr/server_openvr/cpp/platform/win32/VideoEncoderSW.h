@@ -30,12 +30,13 @@ public:
 
     AVCodecID ToFFMPEGCodec(ALVR_CODEC codec);
 
-    void Transmit(
+    void QueueForEncoding(
         ID3D11Texture2D* pTexture,
         uint64_t presentationTime,
         uint64_t targetTimestampNs,
         bool insertIDR
     );
+    void TransmitAvailable(void);
     HRESULT SetupStagingTexture(ID3D11Texture2D* pTexture);
     HRESULT CopyTexture(ID3D11Texture2D* pTexture);
 

@@ -10,10 +10,12 @@ public:
     virtual void Initialize() = 0;
     virtual void Shutdown() = 0;
 
-    virtual void Transmit(
+    virtual void QueueForEncoding(
         ID3D11Texture2D* pTexture,
         uint64_t presentationTime,
         uint64_t targetTimestampNs,
         bool insertIDR
     ) = 0;
+
+    virtual void TransmitAvailable(void) = 0;
 };

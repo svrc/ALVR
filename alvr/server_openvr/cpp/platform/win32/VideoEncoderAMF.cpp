@@ -723,7 +723,7 @@ void VideoEncoderAMF::Shutdown() {
     Debug("Successfully shutdown VideoEncoderAMF.\n");
 }
 
-void VideoEncoderAMF::Transmit(
+void VideoEncoderAMF::QueueForEncoding(
     ID3D11Texture2D* pTexture, uint64_t presentationTime, uint64_t targetTimestampNs, bool insertIDR
 ) {
     amf::AMFSurfacePtr surface;
@@ -767,6 +767,8 @@ void VideoEncoderAMF::Transmit(
     m_amfComponents.front()->SubmitInput(surface);
     m_pipeline->Run(m_hasQueryTimeout);
 }
+
+void VideoEncoderAMF::TransmitAvailable(void) { ; }
 
 void VideoEncoderAMF::Receive(AMFDataPtr data) {
     amf_pts current_time = amf_high_precision_clock();

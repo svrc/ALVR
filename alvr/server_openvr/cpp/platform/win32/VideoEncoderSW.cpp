@@ -144,7 +144,7 @@ void VideoEncoderSW::Shutdown() {
     Debug("Successfully shutdown VideoEncoderSW.\n");
 }
 
-void VideoEncoderSW::Transmit(
+void VideoEncoderSW::QueueForEncoding(
     ID3D11Texture2D* pTexture, uint64_t presentationTime, uint64_t targetTimestampNs, bool insertIDR
 ) {
     // Handle bitrate changes
@@ -282,6 +282,8 @@ HRESULT VideoEncoderSW::SetupStagingTexture(ID3D11Texture2D* pTexture) {
 
     return m_d3dRender->GetDevice()->CreateTexture2D(&m_stagingTexDesc, nullptr, &m_stagingTex);
 }
+
+void VideoEncoderSW::TransmitAvailable(void) { ; }
 
 HRESULT VideoEncoderSW::CopyTexture(ID3D11Texture2D* pTexture) {
     m_d3dRender->GetContext()->CopyResource(m_stagingTex.Get(), pTexture);

@@ -37,7 +37,7 @@ void VideoEncoderNVENC::Initialize() {
 
     try {
         m_NvNecoder = std::make_shared<NvEncoderD3D11>(
-            m_pD3DRender->GetDevice(), m_renderWidth, m_renderHeight, format, 3
+            m_pD3DRender->GetDevice(), m_renderWidth, m_renderHeight, format, 4
         );
     } catch (NVENCException e) {
         throw MakeException(
@@ -92,7 +92,7 @@ void VideoEncoderNVENC::Shutdown() {
     }
 }
 
-void VideoEncoderNVENC::Transmit(
+void VideoEncoderNVENC::QueueForEncoding(
     ID3D11Texture2D* pTexture, uint64_t presentationTime, uint64_t targetTimestampNs, bool insertIDR
 ) {
     auto params = GetDynamicEncoderParams();
@@ -112,11 +112,9 @@ void VideoEncoderNVENC::Transmit(
         reconfigureParams.reInitEncodeParams = initializeParams;
         m_NvNecoder->Reconfigure(&reconfigureParams);
     }
-
-    std::vector<std::vector<uint8_t>> vPacket;
-
     NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
     encoderInputFrame->timestamp = targetTimestampNs;
+    encoderInputFrame->isIDR = insertIDR;
 
     ID3D11Texture2D* pInputTexture
         = reinterpret_cast<ID3D11Texture2D*>(encoderInputFrame->inputPtr);
@@ -127,13 +125,20 @@ void VideoEncoderNVENC::Transmit(
         Debug("Inserting IDR frame.\n");
         picParams.encodePicFlags = NV_ENC_PIC_FLAG_FORCEIDR;
     }
-    std::vector<uint64_t> vTimestamp;
 
-    m_NvNecoder->EncodeFrame(vPacket, vTimestamp, &picParams);
+    m_NvNecoder->EncodeFrame(&picParams);
+}
+
+void VideoEncoderNVENC::TransmitAvailable(void) {
+    std::vector<std::vector<uint8_t>> vPacket;
+    std::vector<uint64_t> vTimestamp;
+    std::vector<bool> vIsIDR;
+    m_NvNecoder->GetEncodedFrames(vPacket, vTimestamp, vIsIDR);
 
     size_t idx = 0;
     for (std::vector<uint8_t>& packet : vPacket) {
-        uint64_t timestamp = vTimestamp[idx++];
+        uint64_t timestamp = vTimestamp[idx];
+        bool isIDR = vIsIDR[idx++];
         uint8_t* buf = packet.data();
         int len = (int)packet.size();
 
@@ -160,7 +165,7 @@ void VideoEncoderNVENC::Transmit(
             fpOut.write(reinterpret_cast<char*>(buf), len);
         }
 
-        ParseFrameNals(m_codec, buf, len, timestamp, insertIDR);
+        ParseFrameNals(m_codec, buf, len, timestamp, isIDR);
     }
 }
 
