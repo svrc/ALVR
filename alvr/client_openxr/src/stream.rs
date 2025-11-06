@@ -198,7 +198,9 @@ impl StreamContext {
             ],
             format,
             config.foveated_encoding_config.clone(),
-            (platform != Platform::Lynx) && !((platform.is_pico() || (platform == Platform::AndroidUnknown)) && config.enable_hdr),
+            (platform != Platform::Lynx)
+                && !((platform.is_pico() || (platform == Platform::AndroidUnknown))
+                    && config.enable_hdr),
             (platform != Platform::AndroidUnknown) && config.use_full_range && !config.enable_hdr, // TODO: figure out why HDR doesn't need the limited range hackfix in staging?
             config.encoding_gamma,
             config.upscaling.clone(),
