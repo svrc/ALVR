@@ -381,18 +381,27 @@ extern "C" fn wait_for_vsync() {
     // any weird ideas about our display Hz with its frame pacing.
     static PRE_HEADSET_STATS_WAIT_INTERVAL: Duration = Duration::from_millis(8);
 
+    // Get all locks out of the way before getting the duration
+    let enforce_server_frame_pacing = alvr_server_core::settings()
+        .video
+        .enforce_server_frame_pacing;
+
     // NB: don't sleep while locking SERVER_DATA_MANAGER or SERVER_CORE_CONTEXT
-    let sleep_duration = SERVER_CORE_CONTEXT
-        .read()
-        .as_ref()
-        .and_then(|ctx| ctx.duration_until_next_vsync());
+    let sleep_duration = if enforce_server_frame_pacing {
+        SERVER_CORE_CONTEXT
+            .read()
+            .as_ref()
+            .and_then(|ctx| ctx.wait_until_next_vsync())
+    } else {
+        SERVER_CORE_CONTEXT
+            .read()
+            .as_ref()
+            .and_then(|ctx| ctx.duration_until_next_vsync())
+    };
 
     if let Some(duration) = sleep_duration {
-        if alvr_server_core::settings()
-            .video
-            .enforce_server_frame_pacing
-        {
-            thread::sleep(duration);
+        if enforce_server_frame_pacing {
+            //time::sleep(duration);
         } else {
             thread::yield_now();
         }
@@ -401,6 +410,10 @@ extern "C" fn wait_for_vsync() {
         // safety fallback to prevent deadlocking.
         thread::sleep(PRE_HEADSET_STATS_WAIT_INTERVAL);
     }
+
+    /*if let Some(context) = &*SERVER_CORE_CONTEXT.read() {
+        context.update_last_vsync_time();
+    }*/
 }
 
 pub extern "C" fn shutdown_driver() {

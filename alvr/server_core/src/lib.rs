@@ -506,6 +506,16 @@ impl ServerCoreContext {
             .map(|stats| stats.duration_until_next_vsync())
     }
 
+    pub fn wait_until_next_vsync(&self) -> Option<Duration> {
+        dbg_server_core!("wait_until_next_vsync");
+
+        self.connection_context
+            .statistics_manager
+            .write()
+            .as_mut()
+            .map(|stats| stats.wait_until_next_vsync())
+    }
+
     pub fn restart(self) {
         dbg_server_core!("restart");
 

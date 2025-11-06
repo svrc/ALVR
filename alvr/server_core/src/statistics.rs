@@ -3,6 +3,7 @@ use alvr_events::{BitrateDirectives, EventType, GraphStatistics, StatisticsSumma
 use alvr_packets::ClientStatistics;
 use std::{
     collections::{HashMap, VecDeque},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -196,7 +197,8 @@ impl StatisticsManager {
 
             let game_time_latency = frame
                 .frame_present
-                .saturating_duration_since(frame.tracking_received);
+                .saturating_duration_since(frame.tracking_received)
+                .saturating_sub(self.frame_interval); // why?
 
             let server_compositor_latency = frame
                 .frame_composed
@@ -318,6 +320,22 @@ impl StatisticsManager {
             self.last_vsync_time += self.frame_interval;
         }
 
-        (self.last_vsync_time + self.frame_interval).saturating_duration_since(now)
+        let wait = (self.last_vsync_time + self.frame_interval).saturating_duration_since(now);
+
+        // If the frame only took slightly longer than the frame interval,
+        // hope it's a one-off and see if we can dodge the frame drop
+        if self.frame_interval.saturating_sub(wait) < Duration::from_micros(500) {
+            Duration::from_micros(0)
+        } else {
+            wait
+        }
+    }
+
+    // NB: this call is blocking
+    pub fn wait_until_next_vsync(&mut self) -> Duration {
+        let sleeped = self.duration_until_next_vsync();
+        thread::sleep(sleeped);
+
+        sleeped
     }
 }
