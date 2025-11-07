@@ -110,6 +110,7 @@ private:
     bool enableFFE;
 
     std::unique_ptr<d3d_render_utils::RenderPipelineYUV> m_yuvPipeline;
+    ComPtr<ID3D11Query> m_endEventQuery;
 
     static bool SetGpuPriority(ID3D11Device* device) {
         typedef enum _D3DKMT_SCHEDULINGPRIORITYCLASS {

@@ -12,17 +12,19 @@
 
 #define THREAD_PRIORITY_MOST_URGENT 15
 
-class CThread
+class CThreadPair
 {
 public:
-	CThread();
-	virtual ~CThread();
+	CThreadPair();
+	virtual ~CThreadPair();
 	virtual bool Init() { return true; }
-	virtual void Run() = 0;
+	virtual void RunConsumer() = 0;
+	virtual void RunProducer() = 0;
 	void Start();
 	void Join();
 private:
-	std::thread *m_pThread;
+	std::thread *m_pThreadConsumer;
+	std::thread *m_pThreadProducer;
 };
 
 #ifdef _WIN32

@@ -112,10 +112,8 @@ void VideoEncoderNVENC::QueueForEncoding(
         reconfigureParams.reInitEncodeParams = initializeParams;
         m_NvNecoder->Reconfigure(&reconfigureParams);
     }
-    NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
-    encoderInputFrame->timestamp = targetTimestampNs;
-    encoderInputFrame->isIDR = insertIDR;
-
+    const NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
+    
     ID3D11Texture2D* pInputTexture
         = reinterpret_cast<ID3D11Texture2D*>(encoderInputFrame->inputPtr);
     m_pD3DRender->GetContext()->CopyResource(pInputTexture, pTexture);
@@ -126,7 +124,7 @@ void VideoEncoderNVENC::QueueForEncoding(
         picParams.encodePicFlags = NV_ENC_PIC_FLAG_FORCEIDR;
     }
 
-    m_NvNecoder->EncodeFrame(&picParams);
+    m_NvNecoder->EncodeFrame(&picParams, targetTimestampNs);
 }
 
 void VideoEncoderNVENC::TransmitAvailable(void) {

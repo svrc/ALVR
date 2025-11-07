@@ -323,7 +323,7 @@ void OvrDirectModeComponent::CopyTexture(uint32_t layerCount) {
     if (m_pEncoder) {
         // Wait for the encoder to be ready.  This is important because the encoder thread
         // blocks on transmit which uses our shared d3d context (which is not thread safe).
-        // m_pEncoder->WaitForEncode();
+        //m_pEncoder->WaitForEncode();
 
         std::string debugText;
 

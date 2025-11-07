@@ -163,6 +163,7 @@ void NvEncoder::CreateDefaultEncoderParams(NV_ENC_INITIALIZE_PARAMS* pIntializeP
         pIntializeParams->enableEncodeAsync = GetCapabilityValue(codecGuid, NV_ENC_CAPS_ASYNC_ENCODE_SUPPORT);
     }
 #endif
+    pIntializeParams->enableEncodeAsync = true;
 
     NV_ENC_PRESET_CONFIG presetConfig = { NV_ENC_PRESET_CONFIG_VER, { NV_ENC_CONFIG_VER } };
     m_nvenc.nvEncGetEncodePresetConfig(m_hEncoder, codecGuid, presetGuid, &presetConfig);
@@ -440,7 +441,7 @@ void NvEncoder::DestroyHWEncoder()
     m_bEncoderInitialized = false;
 }
 
-NvEncInputFrame* NvEncoder::GetNextInputFrame()
+const NvEncInputFrame* NvEncoder::GetNextInputFrame()
 {
     int i = m_iToSend % m_nEncoderBuffer;
     return &m_vInputFrames[i];
@@ -468,7 +469,7 @@ void NvEncoder::MapResources(uint32_t bfrIdx)
     }
 }
 
-void NvEncoder::EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams)
+void NvEncoder::EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams, uint64_t timestamp)
 {
     if (!IsHWEncoderInitialized())
     {
@@ -479,7 +480,7 @@ void NvEncoder::EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams)
 
     MapResources(bfrIdx);
 
-    NVENCSTATUS nvStatus = DoEncode(m_vMappedInputBuffers[bfrIdx], m_vBitstreamOutputBuffer[bfrIdx], pPicParams);
+    NVENCSTATUS nvStatus = DoEncode(m_vMappedInputBuffers[bfrIdx], m_vBitstreamOutputBuffer[bfrIdx], pPicParams, timestamp);
 
     if (nvStatus == NV_ENC_SUCCESS || nvStatus == NV_ENC_ERR_NEED_MORE_INPUT)
     {
@@ -551,7 +552,7 @@ void NvEncoder::GetSequenceParams(std::vector<uint8_t> &seqParams)
     seqParams.insert(seqParams.end(), &spsppsData[0], &spsppsData[spsppsSize]);
 }
 
-NVENCSTATUS NvEncoder::DoEncode(NV_ENC_INPUT_PTR inputBuffer, NV_ENC_OUTPUT_PTR outputBuffer, NV_ENC_PIC_PARAMS *pPicParams)
+NVENCSTATUS NvEncoder::DoEncode(NV_ENC_INPUT_PTR inputBuffer, NV_ENC_OUTPUT_PTR outputBuffer, NV_ENC_PIC_PARAMS *pPicParams, uint64_t timestamp)
 {
     NV_ENC_PIC_PARAMS picParams = {};
     if (pPicParams)
@@ -566,6 +567,7 @@ NVENCSTATUS NvEncoder::DoEncode(NV_ENC_INPUT_PTR inputBuffer, NV_ENC_OUTPUT_PTR 
     picParams.inputHeight = GetEncodeHeight();
     picParams.outputBitstream = outputBuffer;
     picParams.completionEvent = GetCompletionEvent(m_iToSend % m_nEncoderBuffer);
+    picParams.inputTimeStamp = timestamp;
     NVENCSTATUS nvStatus = m_nvenc.nvEncEncodePicture(m_hEncoder, &picParams);
 
     return nvStatus; 
@@ -598,14 +600,14 @@ void NvEncoder::GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, 
 {
     unsigned i = 0;
     int iEnd = bOutputDelay ? m_iToSend - m_nOutputDelay : m_iToSend;
-    for (; m_iGot < iEnd; m_iGot)
+    //for (; m_iGot < iEnd; m_iGot)
     {
-        /*if (!WaitForCompletionEvent(m_iGot % m_nEncoderBuffer)) {
-            return;
-        }*/
-        if (!CheckCompleted(m_iGot % m_nEncoderBuffer)) {
+        if (!WaitForCompletionEvent(m_iGot % m_nEncoderBuffer)) {
             return;
         }
+        /*if (!CheckCompleted(m_iGot % m_nEncoderBuffer)) {
+            return;
+        }*/
         NV_ENC_LOCK_BITSTREAM lockBitstreamData = { NV_ENC_LOCK_BITSTREAM_VER };
         lockBitstreamData.outputBitstream = vOutputBuffer[m_iGot % m_nEncoderBuffer];
         lockBitstreamData.doNotWait = false;
@@ -646,10 +648,10 @@ void NvEncoder::GetEncodedPacket(std::vector<NV_ENC_OUTPUT_PTR> &vOutputBuffer, 
             m_vMappedRefBuffers[m_iGot % m_nEncoderBuffer] = nullptr;
         }
 
-        vTimestamp.push_back(m_vInputFrames[m_iGot % m_nEncoderBuffer].timestamp);
-        vIsIDR.push_back(m_vInputFrames[m_iGot % m_nEncoderBuffer].isIDR);
+        vTimestamp.push_back(lockBitstreamData.outputTimeStamp);
+        vIsIDR.push_back(lockBitstreamData.pictureType == NV_ENC_PIC_TYPE_IDR);
         m_iGot++;
-        //break;
+        return;
     }
 }
 
@@ -804,8 +806,8 @@ bool NvEncoder::WaitForCompletionEvent(int iEvent)
         return true;
     }
 
-    // wait for 6ms
-    DWORD result = WaitForSingleObject(m_vpCompletionEvent[iEvent], 6);
+    // wait for 20ms
+    DWORD result = WaitForSingleObject(m_vpCompletionEvent[iEvent], 20);
     if (result == WAIT_FAILED)
     {
         NVENC_THROW_ERROR("Failed to encode frame", NV_ENC_ERR_GENERIC);

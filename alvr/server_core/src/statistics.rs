@@ -197,8 +197,7 @@ impl StatisticsManager {
 
             let game_time_latency = frame
                 .frame_present
-                .saturating_duration_since(frame.tracking_received)
-                .saturating_sub(self.frame_interval); // why?
+                .saturating_duration_since(frame.tracking_received);
 
             let server_compositor_latency = frame
                 .frame_composed

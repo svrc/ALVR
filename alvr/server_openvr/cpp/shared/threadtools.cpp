@@ -3,36 +3,44 @@
 
 //--------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------
-CThread::CThread()
-	: m_pThread( NULL )
+CThreadPair::CThreadPair()
+	: m_pThreadConsumer( NULL ), m_pThreadProducer( NULL )
 {}
 
 //--------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------
-CThread::~CThread()
+CThreadPair::~CThreadPair()
 {
 	Join();
 }
 
 //--------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------
-void CThread::Start()
+void CThreadPair::Start()
 {
 	if ( Init() )
 	{
-		m_pThread = new std::thread( &CThread::Run, this );
+		m_pThreadConsumer = new std::thread( &CThreadPair::RunConsumer, this );
+		m_pThreadProducer = new std::thread( &CThreadPair::RunProducer, this );
 	}
 }
 
 //--------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------
-void CThread::Join()
+void CThreadPair::Join()
 {
-	if ( m_pThread )
+	if ( m_pThreadConsumer )
 	{
-		m_pThread->join();
-		delete m_pThread;
-		m_pThread = NULL;
+		m_pThreadConsumer->join();
+		delete m_pThreadConsumer;
+		m_pThreadConsumer = NULL;
+	}
+	
+	if ( m_pThreadProducer )
+	{
+		m_pThreadProducer->join();
+		delete m_pThreadProducer;
+		m_pThreadProducer = NULL;
 	}
 }
 

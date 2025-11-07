@@ -546,6 +546,14 @@ bool FrameRender::Startup() {
 
     Debug("Staging Texture created\n");
 
+    D3D11_QUERY_DESC qd = {};
+    qd.Query = D3D11_QUERY_EVENT;
+    hr = m_pD3DRender->GetDevice()->CreateQuery(&qd, &m_endEventQuery);
+    if (FAILED(hr)) {
+        Error("CreateQuery %p %ls\n", hr, GetErrorStr(hr).c_str());
+        return false;
+    }
+
     return true;
 }
 
@@ -569,7 +577,7 @@ bool FrameRender::RenderFrame(
     bool recentering,
     const std::string& message,
     const std::string& debugText
-) {
+) { 
     // Set render target
     m_pD3DRender->GetContext()->OMSetRenderTargets(1, m_pRenderTargetView.GetAddressOf(), NULL);
 
@@ -885,7 +893,15 @@ bool FrameRender::RenderFrame(
         m_yuvPipeline->Render();
     }
 
+    m_pD3DRender->GetContext()->End(m_endEventQuery.Get());
     m_pD3DRender->GetContext()->Flush();
+
+    // Make sure the commands were actually submitted to try and get accurate timing stats
+    for (int i = 0; i < 20; ++i) {
+        HRESULT hr = m_pD3DRender->GetContext()->GetData(m_endEventQuery.Get(), nullptr, 0, 0);
+        if (hr == S_OK) break;
+        Sleep(1); // yield
+    }
 
     return true;
 }

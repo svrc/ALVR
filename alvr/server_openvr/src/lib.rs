@@ -400,9 +400,7 @@ extern "C" fn wait_for_vsync() {
     };
 
     if let Some(duration) = sleep_duration {
-        if enforce_server_frame_pacing {
-            //time::sleep(duration);
-        } else {
+        if !enforce_server_frame_pacing {
             thread::yield_now();
         }
     } else {
@@ -410,10 +408,6 @@ extern "C" fn wait_for_vsync() {
         // safety fallback to prevent deadlocking.
         thread::sleep(PRE_HEADSET_STATS_WAIT_INTERVAL);
     }
-
-    /*if let Some(context) = &*SERVER_CORE_CONTEXT.read() {
-        context.update_last_vsync_time();
-    }*/
 }
 
 pub extern "C" fn shutdown_driver() {

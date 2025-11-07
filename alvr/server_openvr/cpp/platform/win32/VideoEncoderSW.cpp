@@ -283,7 +283,7 @@ HRESULT VideoEncoderSW::SetupStagingTexture(ID3D11Texture2D* pTexture) {
     return m_d3dRender->GetDevice()->CreateTexture2D(&m_stagingTexDesc, nullptr, &m_stagingTex);
 }
 
-void VideoEncoderSW::TransmitAvailable(void) { ; }
+void VideoEncoderSW::TransmitAvailable(void) { Sleep(1); }
 
 HRESULT VideoEncoderSW::CopyTexture(ID3D11Texture2D* pTexture) {
     m_d3dRender->GetContext()->CopyResource(m_stagingTex.Get(), pTexture);

@@ -768,7 +768,7 @@ void VideoEncoderAMF::QueueForEncoding(
     m_pipeline->Run(m_hasQueryTimeout);
 }
 
-void VideoEncoderAMF::TransmitAvailable(void) { ; }
+void VideoEncoderAMF::TransmitAvailable(void) { Sleep(1); }
 
 void VideoEncoderAMF::Receive(AMFDataPtr data) {
     amf_pts current_time = amf_high_precision_clock();

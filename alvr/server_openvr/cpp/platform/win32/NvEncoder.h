@@ -78,8 +78,6 @@ struct NvEncInputFrame
     uint32_t chromaPitch;
     NV_ENC_BUFFER_FORMAT bufferFormat;
     NV_ENC_INPUT_RESOURCE_TYPE resourceType;
-    uint64_t timestamp;
-    bool isIDR;
 };
 
 /**
@@ -117,7 +115,7 @@ public:
     *  input buffer. The application must copy the uncompressed data to the
     *  input buffer and then call EncodeFrame() function to encode it.
     */
-    NvEncInputFrame* GetNextInputFrame();
+    const NvEncInputFrame* GetNextInputFrame();
 
 
     /**
@@ -126,7 +124,7 @@ public:
     *  data, which has been copied to an input buffer obtained from the
     *  GetNextInputFrame() function.
     */
-    virtual void EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams = nullptr);
+    virtual void EncodeFrame(NV_ENC_PIC_PARAMS *pPicParams = nullptr, uint64_t timestamp = 0);
 
     /**
     *  @brief  This function is used to retrieve encoded frame bitstreams submitted to EncodeFrame
@@ -323,7 +321,7 @@ protected:
     *  @brief This function is used to submit the encode commands to the  
     *         NVENC hardware.
     */
-    NVENCSTATUS DoEncode(NV_ENC_INPUT_PTR inputBuffer, NV_ENC_OUTPUT_PTR outputBuffer, NV_ENC_PIC_PARAMS *pPicParams);
+    NVENCSTATUS DoEncode(NV_ENC_INPUT_PTR inputBuffer, NV_ENC_OUTPUT_PTR outputBuffer, NV_ENC_PIC_PARAMS *pPicParams, uint64_t timestamp);
 
     /**
     *  @brief This function is used to submit the encode commands to the 

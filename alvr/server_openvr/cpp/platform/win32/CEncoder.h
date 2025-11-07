@@ -26,7 +26,7 @@ using Microsoft::WRL::ComPtr;
 // as soon as we know rendering made it this frame.  This step of the pipeline
 // should run about 3ms per frame.
 //----------------------------------------------------------------------------
-class CEncoder : public CThread {
+class CEncoder : public CThreadPair {
 public:
     CEncoder();
     ~CEncoder();
@@ -52,7 +52,10 @@ public:
         const std::string& debugText
     );
 
-    virtual void Run();
+    void QueueForEncoding();
+
+    virtual void RunConsumer();
+    virtual void RunProducer();
 
     virtual void Stop();
 
@@ -69,13 +72,14 @@ public:
     void CaptureFrame();
 
 private:
-    CThreadEvent m_newFrameReady, m_encodeFinished;
+    CThreadEvent m_newFrameReady, m_encodeFinished, m_encodeScheduled;
     std::shared_ptr<VideoEncoder> m_videoEncoder;
     bool m_bExiting;
     uint64_t m_presentationTime;
     uint64_t m_targetTimestampNs;
+    int m_nextFrameIdx;
 
-    std::shared_ptr<FrameRender> m_FrameRender;
+    std::shared_ptr<FrameRender> m_FrameRender[4];
 
     IDRScheduler m_scheduler;
 };
