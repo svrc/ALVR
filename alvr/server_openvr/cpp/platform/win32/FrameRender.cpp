@@ -894,14 +894,15 @@ bool FrameRender::RenderFrame(
     }
 
     m_pD3DRender->GetContext()->End(m_endEventQuery.Get());
-    m_pD3DRender->GetContext()->Flush();
+    //m_pD3DRender->GetContext()->Flush();
 
     // Make sure the commands were actually submitted to try and get accurate timing stats
-    for (int i = 0; i < 20; ++i) {
+    // nvm this causes stuttering
+    /*for (int i = 0; i < 20; ++i) {
         HRESULT hr = m_pD3DRender->GetContext()->GetData(m_endEventQuery.Get(), nullptr, 0, 0);
         if (hr == S_OK) break;
         Sleep(1); // yield
-    }
+    }*/
 
     return true;
 }
