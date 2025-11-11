@@ -113,7 +113,7 @@ void VideoEncoderNVENC::QueueForEncoding(
         m_NvNecoder->Reconfigure(&reconfigureParams);
     }
     const NvEncInputFrame* encoderInputFrame = m_NvNecoder->GetNextInputFrame();
-    
+
     ID3D11Texture2D* pInputTexture
         = reinterpret_cast<ID3D11Texture2D*>(encoderInputFrame->inputPtr);
     m_pD3DRender->GetContext()->CopyResource(pInputTexture, pTexture);

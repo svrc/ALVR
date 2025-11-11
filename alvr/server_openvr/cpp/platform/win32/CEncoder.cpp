@@ -104,7 +104,7 @@ bool CEncoder::CopyToStaging(
     m_presentationTime = presentationTime;
     m_targetTimestampNs = targetTimestampNs;
 
-    m_nextFrameIdx = (m_nextFrameIdx+1) % 4;
+    m_nextFrameIdx = (m_nextFrameIdx + 1) % 4;
 
     m_FrameRender[m_nextFrameIdx]->Startup();
 

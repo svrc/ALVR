@@ -577,7 +577,7 @@ bool FrameRender::RenderFrame(
     bool recentering,
     const std::string& message,
     const std::string& debugText
-) { 
+) {
     // Set render target
     m_pD3DRender->GetContext()->OMSetRenderTargets(1, m_pRenderTargetView.GetAddressOf(), NULL);
 
@@ -894,7 +894,7 @@ bool FrameRender::RenderFrame(
     }
 
     m_pD3DRender->GetContext()->End(m_endEventQuery.Get());
-    //m_pD3DRender->GetContext()->Flush();
+    // m_pD3DRender->GetContext()->Flush();
 
     // Make sure the commands were actually submitted to try and get accurate timing stats
     // nvm this causes stuttering
