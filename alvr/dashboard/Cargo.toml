@@ -18,7 +18,9 @@ alvr_gui_common.workspace = true
 
 bincode = "1"
 chrono = "0.4"
-eframe = "0.31"
+eframe = { version = "0.31", features = ["wgpu"] }
+egui-wgpu = "0.31"
+wgpu = "24.0.0"
 env_logger = "0.11"
 ico = "0.4"
 rand = "0.9"
