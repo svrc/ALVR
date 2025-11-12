@@ -130,10 +130,8 @@ fn main() {
                         },
                     )),
                     device_descriptor: Arc::new(|_adapter: &wgpu::Adapter| wgpu::DeviceDescriptor {
-                        label: None,
-                        required_features: wgpu::Features::empty(),
-                        required_limits: wgpu::Limits::default(),
-                        memory_hints: wgpu::MemoryHints::MemoryUsage,
+                        memory_hints: wgpu::MemoryHints::Performance,
+                        ..Default::default()
                     }),
                     trace_path: None,
                 }),
