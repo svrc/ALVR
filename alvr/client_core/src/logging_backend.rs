@@ -112,7 +112,7 @@ pub fn init_logging() {
         env_logger::builder()
             .format(|f, record| {
                 if send_log(record) {
-                    writeln!(f, "{}", record.args())
+                    writeln!(f, "[ALVR NATIVE-RUST] {}", record.args())
                 } else {
                     Ok(())
                 }

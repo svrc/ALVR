@@ -461,7 +461,7 @@ fn connection_pipeline(
                         info!("Server disconnected. Cause: {e:?}");
                         set_hud_message(&event_queue, SERVER_DISCONNECTED_MESSAGE);
 
-                        break;
+                        //break;
                     }
                 }
 
